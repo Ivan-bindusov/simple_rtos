@@ -1,0 +1,21 @@
+# Зависимости (для Node.js / Python и т.д.)
+node_modules/
+__pycache__/
+
+# Секретные ключи и настройки окружения
+.env
+*.log
+
+# Папки редакторов кода и операционных систем
+.vscode/
+.idea/
+.DS_Store
+.gigacode/
+
+Drivers/
+build/
+src/bsp/
+
+STM32.ld
+stm32f103c8tx_flash.ld
+stm32f411ceu6_flash.ld
