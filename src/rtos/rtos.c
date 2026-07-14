@@ -227,11 +227,34 @@ void* OS_Malloc(uint32_t size) {
     BlockHeader_t* block = rtosHeap.matrix[fl][sl];
 
     if (block == NULL) {
+        // Проверяем есть ли свободные столбцы побольше в текущей строке
+        uint32_t slMap = rtosHeap.slBitmap[fl] & (~0UL << (sl + 1));
 
+        if (slMap != 0) {
+            // Найден больший столбец в этой же строке
+            sl = __builtin_ctz(slMap);
+            block = rtosHeap.matrix[fl][sl];
+        } else {
+            // В текущей строке блоков, нужного размера больше нет
+            uint32_t flMap = rtosHeap.flBitmap & (~0UL << (fl + 1));
+
+            if (flMap == 0) {
+                // AHTUNG! В куче физически нет ни одного свободного блока подходящего размера
+                __asm volatile ("cpsie i");
+                return NULL; // Ошибка, "Недостаточно памяти"
+            }
+
+            // Находим ближайшую старшую строку
+            fl = __builtin_ctz(flMap);
+            // В этой строке берем самый первый свободный столбец
+            sl = __builtin_ctz(rtosHeap.slBitmap[fl]);
+
+            block = rtosHeap.matrix[fl][sl];
+        }
+
+        __asm volatile ("cpsie i");
+        return NULL;
     }
-
-    // Если блок найден - помечаем его как занятый (сбрасываем флаг 0x01)
-    block->sizeAndFlags &= ~0x01;
 
     // Убираем его из списка свободных
     rtosHeap.matrix[fl][sl] = block->nextFree;
@@ -243,6 +266,45 @@ void* OS_Malloc(uint32_t size) {
         if (rtosHeap.slBitmap[fl] == 0) {
             rtosHeap.flBitmap &= ~(1 << fl);
         }
+    }
+
+    uint32_t currentBlockSize = block->sizeAndFlags & ~0x01; // Чистый размер блока
+
+    // Проверяем достаточно ли блок большой (16 байт для минимально возможного блока)
+    if (currentBlockSize >= (size + sizeof(BlockHeader_t) + 16)) {
+        // Находим адрес, где будет начинаться новый свободный блок
+        BlockHeader_t* remainingBlock = (BlockHeader_t*)((uint8_t*)block + sizeof(BlockHeader_t) + size);
+
+        // Вычисляем размер нового остатка
+        uint32_t remainingSize = currentBlockSize - size - sizeof(BlockHeader_t);
+
+        // Пишем заголовок нового, пустого оставшегося блока и взводим флаг - "свободен"
+        remainingBlock->sizeAndFlags = remainingSize | 0x01;
+
+        // Связываем остаточный блок по физической памяти с левым соседом
+        remainingBlock->prevPhysicalBlock = block;
+
+        // Текущий блок теперь уменшаем до размера, который просил пользователь
+        block->sizeAndFlags = size;
+
+        // Регистрируем новый свободный остаток в списке
+        int remFl, remSl;
+        tlsf_mapping(&remainingSize, &remFl, &remSl);
+
+        // Помещаем остаток в двузсвязный список свободных блоков ячейки (в начало очереди)
+        remainingBlock->nextFree = rtosHeap.matrix[remFl][remSl];
+        remainingBlock->prevFree = NULL;
+        if (rtosHeap.matrix[remFl][remSl]) {
+            rtosHeap.matrix[remFl][remSl]->prevFree = remainingBlock;
+        }
+        rtosHeap.matrix[remFl][remSl] = remainingBlock;
+
+        // Взводим биты в масках для нового остатка
+        rtosHeap.flBitmap |= (1 << remFl);
+        rtosHeap.slBitmap[remFl] |= (1 << remSl);
+    } else {
+        // Если остаток слишком мал, дробить его не получится, отдаем его целиком
+        block->sizeAndFlags &= ~0x01;
     }
 
     __asm volatile ("cpsie i");
