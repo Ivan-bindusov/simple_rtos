@@ -186,6 +186,30 @@ static void tlsf_mapping(uint32_t size, int* fl, int* sl) {
     *fl -= 4; // Сдвиг под минимальный размер (16 байт = 2 ^ 4)
 }
 
+static void tlsf_remove_free_block(BlockHeader_t* block) {
+    int fl, sl;
+    uint32_t size = block->sizeAndFlags & ~0x01;
+    tlsf_mapping(size, &fl, &sl);
+
+    // Корректируем ссылки в двусвязном списке
+    if (block->nextFree) block->nextFree->prevFree = block->prevFree;
+    if (block->prevFree) {
+        block->prevFree->nextFree = block->nextFree;
+    } else {
+        // Если этот блок был первым в списке, перенаправляем матрицу указателей на следующий блок
+        rtosHeap.matrix[fl][sl] = block->nextFree;
+    }
+
+    // Если ячейка памяти стала абсолютно пустой - гасим ее биты
+    if (rtosHeap.matrix[fl][sl] == NULL) {
+        rtosHeap.slBitmap[fl] &= ~(1 << sl);
+        if (rtosHeap.slBitmap[fl] == 0) {
+            // Если после очистки бита в slBitmap в нем больше не осталось битов, то гасим всю строку fl
+            rtosHeap.flBitmap &= ~(1 << fl);
+        }
+    }
+}
+
 void OS_Heap_Init(void) {
     // Обнуляем bitmaps и матрицу указателей
     rtosHeap.flBitmap = 0;
@@ -289,7 +313,7 @@ void* OS_Malloc(uint32_t size) {
 
         // Регистрируем новый свободный остаток в списке
         int remFl, remSl;
-        tlsf_mapping(&remainingSize, &remFl, &remSl);
+        tlsf_mapping(remainingSize, &remFl, &remSl);
 
         // Помещаем остаток в двузсвязный список свободных блоков ячейки (в начало очереди)
         remainingBlock->nextFree = rtosHeap.matrix[remFl][remSl];
@@ -311,6 +335,80 @@ void* OS_Malloc(uint32_t size) {
 
     // Возвращаем указатель на память сразу после заголовка блока
     return (void*)((uint8_t*)block + sizeof(BlockHeader_t));
+}
+
+void OS_Free(void* ptr) {
+    if (ptr == NULL) return;
+
+    __asm volatile ("cpsid i");
+
+    // Восстанавливаем пасспорт блока из указателя, переданным пользователем
+    BlockHeader_t* block = (BlockHeader_t*)((uint8_t*)ptr - sizeof(BlockHeader_t));
+
+    block->sizeAndFlags |= 0x01;
+    uint32_t currentSize = block->sizeAndFlags & ~0x01;
+
+    // Слияние с правым соседом
+    BlockHeader_t* nextPhysical = (BlockHeader_t*)((uint8_t*)block + sizeof(BlockHeader_t) + currentSize);
+
+    // Защита: правый сосед должен быть внутри физических границ массива кучи
+    if ((uint8_t*)nextPhysical < (heapMemory + HEAP_SIZE)) {
+        if (nextPhysical->sizeAndFlags & 0x01) { // Если правый сосед свободен
+            // Вычеркиваем его из списка
+            tlsf_remove_free_block(nextPhysical);
+
+            // Поглощаем его размер и его паспорт
+            currentSize += (nextPhysical->sizeAndFlags & ~0x01) + sizeof(BlockHeader_t);
+            block->sizeAndFlags = currentSize | 0x01;
+
+            // Если за правым соседом был еще кто-то, связываем его с ними
+            BlockHeader_t* nextNextPhysical = (BlockHeader_t*)((uint8_t*)nextPhysical + sizeof(BlockHeader_t) +
+                (nextPhysical->sizeAndFlags & ~0x01));
+            if ((uint8_t*)nextNextPhysical < (heapMemory + HEAP_SIZE)) {
+                nextNextPhysical->prevPhysicalBlock = block; // Блок после следующего не сливается, а просто ссылается на этот
+            }
+        }
+    }
+
+    // Слияние с левым соседом
+    BlockHeader_t* prevPhysical = block->prevPhysicalBlock;
+    if (prevPhysical != NULL && (prevPhysical->sizeAndFlags & 0x01)) {
+        // Вычеркиваем левого соседа из списка т.к. его размер изменится
+        tlsf_remove_free_block(prevPhysical);
+
+        // Левый сосед поглощает нас
+        uint32_t prevSize = prevPhysical->sizeAndFlags & ~0x01;
+        prevSize += currentSize + sizeof(BlockHeader_t);
+        prevPhysical->sizeAndFlags = prevSize | 0x01;
+
+        // Перенаправляем главный указатель на левого соседа
+        block = prevPhysical;
+        currentSize = prevSize;
+
+        // Следующий физический сосед связывается с нашим объединенным блоком
+        BlockHeader_t* nextPhysicalAfterMerge = (BlockHeader_t*)((uint8_t*)block + sizeof(BlockHeader_t) + currentSize);
+        if ((uint8_t*)nextPhysicalAfterMerge < (heapMemory + HEAP_SIZE)) {
+            nextPhysicalAfterMerge->prevPhysicalBlock = block;
+        }
+    }
+
+    // Регистрация финального объединенного блока в структуре TLSF
+    int fl, sl;
+    tlsf_mapping(currentSize, &fl, &sl);
+
+    // Вставляем блок в начало двусвязного списка соответствующей ячейки
+    block->nextFree = rtosHeap.matrix[fl][sl];
+    block->prevFree = NULL;
+    if (rtosHeap.matrix[fl][sl]) {
+        rtosHeap.matrix[fl][sl]->prevFree = block;
+    }
+    rtosHeap.matrix[fl][sl] = block;
+
+    // Устанавливаем биты, указвающие на наличие свободного блока соответствующего размера
+    rtosHeap.flBitmap |= (1 << fl);
+    rtosHeap.slBitmap[fl] |= (1 << sl);
+
+    __asm volatile ("cpsie i");
 }
 
 void OS_Timer_Create(uint8_t id, uint32_t period, uint8_t autoReload, TimerCallback_t callback) {
