@@ -6,7 +6,6 @@
 TCB_t TCBs[MAX_TASKS];
 uint32_t currentTask = 0;
 uint32_t __attribute__((aligned(8))) TaskStacks[MAX_TASKS][STACK_SIZE];
-
 TLSF_Pool_t rtosHeap;
 uint8_t heapMemory[HEAP_SIZE] __attribute__((aligned(4))); // физическая память кучи
 
@@ -275,9 +274,6 @@ void* OS_Malloc(uint32_t size) {
 
             block = rtosHeap.matrix[fl][sl];
         }
-
-        __asm volatile ("cpsie i");
-        return NULL;
     }
 
     // Убираем его из списка свободных

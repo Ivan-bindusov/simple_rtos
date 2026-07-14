@@ -2,34 +2,50 @@
 #include "stm32f4xx.h"
 #include "rtos/rtos.h"
 
-Semaphore_t testSemaphore;
-
-void Task1_Medium(void) {
+void Task1_HeapTest(void) {
     OS_Delay(10);
 
-    if (Semaphore_Take(&testSemaphore, 0xFFFFFFFF)) {
+    if (rtosHeap.flBitmap == 0) {
         while(1) {
-            OS_Delay(100);
+            // Быстрое аварийное мигание: куча вообще не инициализировалась!
+            //GPIOC->ODR ^= GPIO_ODR_ODR_13; 
+            for(volatile int i=0; i<1000000; i++);
         }
     }
-}
 
-void Task2_High(void) {
-    OS_Delay(10);
-
-    if (Semaphore_Take(&testSemaphore, 0xFFFFFFFF)) {
-        while(1) {
-            OS_Delay(200);
-        }
-    }
-}
-
-void Task3_Signaler(void) {
-    OS_Delay(50);
-
-    Semaphore_Give(&testSemaphore);
     while(1) {
-        OS_Delay(10);
+        // Выделяем память
+        void* a = OS_Malloc(32);
+        void* b = OS_Malloc(64);
+        void* c = OS_Malloc(128);
+
+        // Если хоть один вызов вернул NULL (ошибку) — куча сломалась на старте
+        if (a == NULL || b == NULL || c == NULL) {
+            while(1) {
+                //GPIOC->ODR ^= GPIO_ODR_ODR_13; 
+                for(volatile int i=0; i<10000000; i++);
+            }
+        }
+
+        // Освобождаем куски
+        OS_Free(b); 
+        OS_Free(a);
+        OS_Free(c);
+
+        void* d = OS_Malloc(4096);
+
+        if (d != NULL) {
+            // ПОБЕДА! Куча работает идеально, слияние произошло!
+            // В знак этого инвертируем светодиод PC13
+            GPIOC->ODR ^= GPIO_ODR_ODR_13; 
+            
+            OS_Free(d); // Очищаем кучу для следующего круга
+        } else {
+            //GPIOC->ODR &= ~GPIO_ODR_ODR_13;
+            while(1);
+        }
+
+        OS_Delay(500);
     }
 }
 
@@ -70,19 +86,14 @@ int main(void) {
 
     GPIOC->BSRR |= GPIO_BSRR_BS_13;
 
-    OS_Timer_Create(0, 500, 1, Led_Timer_Callback);
-    OS_Timer_Start(0);
+    OS_Heap_Init();
 
-    Semaphore_Init(&testSemaphore, 0, 1);
-
-    Task_Create(0, 10, Task1_Medium);
-    Task_Create(1, 2, Task2_High);
-    Task_Create(2, 5, Task3_Signaler);
+    Task_Create(0, 10, Task1_HeapTest);
     Task_Create(4, 255, Task4_Idle);
 
     SysTick_Init(100000000 / 1000);
 
-    OS_Start(Task1_Medium);
+    OS_Start(Task1_HeapTest);
 
     while(1);
 }
