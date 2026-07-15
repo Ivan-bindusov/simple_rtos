@@ -277,6 +277,7 @@ void* OS_Malloc(uint32_t size) {
     }
 
     // Убираем его из списка свободных
+    // захватываем первый попавшийся (не применяя поиск по двусвязному списку)
     rtosHeap.matrix[fl][sl] = block->nextFree;
     if (block->nextFree) block->nextFree->prevFree = NULL;
 

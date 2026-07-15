@@ -2,47 +2,43 @@
 #include "stm32f4xx.h"
 #include "rtos/rtos.h"
 
+void* ptrA = NULL;
+void* ptrB = NULL;
+void* ptrC = NULL;
+void* ptrD = NULL;
+
 void Task1_HeapTest(void) {
     OS_Delay(10);
 
-    if (rtosHeap.flBitmap == 0) {
-        while(1) {
-            // Быстрое аварийное мигание: куча вообще не инициализировалась!
-            //GPIOC->ODR ^= GPIO_ODR_ODR_13; 
-            for(volatile int i=0; i<1000000; i++);
-        }
-    }
-
     while(1) {
         // Выделяем память
-        void* a = OS_Malloc(32);
-        void* b = OS_Malloc(64);
-        void* c = OS_Malloc(128);
+        ptrA = OS_Malloc(32);
+        ptrB = OS_Malloc(64);
+        ptrC = OS_Malloc(128);
 
-        // Если хоть один вызов вернул NULL (ошибку) — куча сломалась на старте
-        if (a == NULL || b == NULL || c == NULL) {
-            while(1) {
-                //GPIOC->ODR ^= GPIO_ODR_ODR_13; 
-                for(volatile int i=0; i<10000000; i++);
-            }
-        }
+        // Breakpoint_1
+        OS_Delay(20);
 
-        // Освобождаем куски
-        OS_Free(b); 
-        OS_Free(a);
-        OS_Free(c);
+        OS_Free(ptrB);
+        ptrB = NULL;
 
-        void* d = OS_Malloc(4096);
+        // Breakpoint_2
+        OS_Delay(20);
 
-        if (d != NULL) {
-            // ПОБЕДА! Куча работает идеально, слияние произошло!
-            // В знак этого инвертируем светодиод PC13
-            GPIOC->ODR ^= GPIO_ODR_ODR_13; 
-            
-            OS_Free(d); // Очищаем кучу для следующего круга
-        } else {
-            //GPIOC->ODR &= ~GPIO_ODR_ODR_13;
-            while(1);
+        OS_Free(ptrA);
+        ptrA = NULL;
+
+        OS_Delay(20);
+
+        OS_Free(ptrC);
+        ptrC = NULL;
+
+        ptrD = OS_Malloc(4096);
+
+        // Breakpoint_3
+        if (ptrD != NULL) {
+            OS_Free(ptrD);
+            ptrD = NULL;
         }
 
         OS_Delay(500);
