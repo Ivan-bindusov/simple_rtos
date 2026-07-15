@@ -1,5 +1,3 @@
-#include <stdint.h>
-#include "stm32f4xx.h"
 #include "rtos/rtos.h"
 
 void* ptrA = NULL;

@@ -14,8 +14,13 @@ __pycache__/
 
 Drivers/
 build/
-src/bsp/
+src/bsp/**
+!src/bsp/stm32f411/
 
 STM32.ld
 stm32f103c8tx_flash.ld
 stm32f411ceu6_flash.ld
+
+src/bsp/stm32f411/*
+!src/bsp/stm32f411/rtos_port.h
+!src/bsp/stm32f411/rtos_port.c

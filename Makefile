@@ -61,12 +61,14 @@ SZ = $(PREFIX)size
 ######################################
 # 3. СПИСОК ИСХОДНЫХ ФАЙЛОВ (УНИВЕРСАЛЬНЫЙ)
 ######################################
-C_SOURCES =  \
-src/main.c \
-src/rtos/rtos.c \
-src/rtos/rtos_port.c \
-src/rtos/rtos_queue.c \
-$(SYSTEM_SRC)
+C_SOURCES =  src/main.c
+C_SOURCES += $(wildcard src/bsp/stm32f411/*.c)
+C_SOURCES += $(wildcard src/rtos/core/*.c)
+C_SOURCES += $(wildcard src/rtos/mem/*.c)
+C_SOURCES += $(wildcard src/rtos/ipc/*.c)
+C_SOURCES += $(wildcard src/rtos/timers/*.c)
+
+#$(SYSTEM_SRC)
 
 ASM_SOURCES =  \
 $(STARTUP_SRC)
@@ -77,7 +79,12 @@ $(STARTUP_SRC)
 C_INCLUDES =  \
 -IDrivers/CMSIS/Core/Include \
 -Isrc \
--Isrc/rtos
+-Isrc/rtos \
+-Isrc/rtos/core \
+-Isrc/rtos/mem \
+-Isrc/rtos/ipc \
+-Isrc/rtos/timers \
+-Isrc/bsp/stm32f411
 
 ifeq ($(MCU_TARGET), stm32f103)
 C_INCLUDES += -IDrivers/CMSIS/Device/ST/STM32F1xx/Include
