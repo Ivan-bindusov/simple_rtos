@@ -1,45 +1,20 @@
 #include "rtos/rtos.h"
+#include "bsp/stm32f411/w25q64.h"
 
-void* ptrA = NULL;
-void* ptrB = NULL;
-void* ptrC = NULL;
-void* ptrD = NULL;
+volatile uint16_t flashID = 0;
 
 void Task1_HeapTest(void) {
     OS_Delay(10);
 
     while(1) {
-        // Выделяем память
-        ptrA = OS_Malloc(32);
-        ptrB = OS_Malloc(64);
-        ptrC = OS_Malloc(128);
-
-        // Breakpoint_1
-        OS_Delay(20);
-
-        OS_Free(ptrB);
-        ptrB = NULL;
-
-        // Breakpoint_2
-        OS_Delay(20);
-
-        OS_Free(ptrA);
-        ptrA = NULL;
-
-        OS_Delay(20);
-
-        OS_Free(ptrC);
-        ptrC = NULL;
-
-        ptrD = OS_Malloc(4096);
-
-        // Breakpoint_3
-        if (ptrD != NULL) {
-            OS_Free(ptrD);
-            ptrD = NULL;
+        flashID = W25Q64_ReadID();
+        if (flashID == 0x8516) {
+            GPIOC->ODR ^= GPIO_ODR_ODR_13;
+            OS_Delay(1000);
+        } else {
+            GPIOC->ODR ^= GPIO_ODR_ODR_13;
+            OS_Delay(100);
         }
-
-        OS_Delay(500);
     }
 }
 
@@ -56,13 +31,15 @@ void Led_Timer_Callback(void) {
 }
 
 int main(void) {
-
     Clock_Init();
+
+    for(volatile int i = 0; i < 500000; i++) { __NOP(); }
+
+    W25Q64_Init();
 
     // Разрешаем отладку во время сна WFI
     DBGMCU->CR |= DBGMCU_CR_DBG_SLEEP | DBGMCU_CR_DBG_STOP | DBGMCU_CR_DBG_STANDBY;
     // 1. АППАРАТНОЕ ВКЛЮЧЕНИЕ FPU (Разрешаем полный доступ к сопроцессорам CP10 и CP11)
-    // Без этого шага любая инструкция float вызовет моментальный HardFault!
     SCB->CPACR |= ((3UL << 10*2) | (3UL << 11*2));
     // 2. АКТИВАЦИЯ РЕЖИМА LAZY STACKING (Ленивое сохранение FPU-регистров)
     // Взводим биты ASPEN (авто-сохранение) и LSPEN (ленивое сохранение)
