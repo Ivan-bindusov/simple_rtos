@@ -9,11 +9,13 @@ void Task1_HeapTest(void) {
     while(1) {
         flashID = W25Q64_ReadID();
         if (flashID == 0x8516) {
+            UART2_SendString("Log flash memory was found\r\n");
             GPIOC->ODR ^= GPIO_ODR_ODR_13;
             OS_Delay(1000);
         } else {
+            UART2_SendString("Error flash ID was wrong\r\n");
             GPIOC->ODR ^= GPIO_ODR_ODR_13;
-            OS_Delay(100);
+            OS_Delay(200);
         }
     }
 }
@@ -36,6 +38,7 @@ int main(void) {
     for(volatile int i = 0; i < 500000; i++) { __NOP(); }
 
     W25Q64_Init();
+    UART2_Init(115200);
 
     // Разрешаем отладку во время сна WFI
     DBGMCU->CR |= DBGMCU_CR_DBG_SLEEP | DBGMCU_CR_DBG_STOP | DBGMCU_CR_DBG_STANDBY;

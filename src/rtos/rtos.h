@@ -11,5 +11,6 @@
 #include "ipc/rtos_queue.h"
 #include "ipc/rtos_sem.h"
 #include "timers/rtos_timer.h"
+#include "bsp/stm32f411/uart.h"
 
 #endif
