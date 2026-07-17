@@ -8,14 +8,19 @@ void Task1_HeapTest(void) {
 
     while(1) {
         flashID = W25Q64_ReadID();
-        if (flashID == 0x8516) {
-            UART2_SendString("Log flash memory was found\r\n");
+
+        if (flashID == 0x8516 || flashID == 0x8517) {
+            UART2_SendString("Log flash memory ID: ");
+            UART2_SendHex16(flashID);
+            UART2_SendString("\r\n");
             GPIOC->ODR ^= GPIO_ODR_ODR_13;
             OS_Delay(1000);
         } else {
-            UART2_SendString("Error flash ID was wrong\r\n");
+            UART2_SendString("Error flash ID was wrong. Was read: ");
+            UART2_SendHex16(flashID);
+            UART2_SendString("\r\n");
             GPIOC->ODR ^= GPIO_ODR_ODR_13;
-            OS_Delay(200);
+            OS_Delay(500);
         }
     }
 }

@@ -33,3 +33,19 @@ void UART2_SendString(const char* str) {
 		UART2_SendChar(*str++);
 	}
 }
+
+static char hex_to_char(uint8_t nibble) {
+	if (nibble < 10) {
+		return '0' + nibble;
+	}
+	return 'A' + (nibble - 10);
+}
+
+void UART2_SendHex16(uint16_t value) {
+	UART2_SendString("0x");
+
+	UART2_SendChar(hex_to_char((value >> 12) & 0x0F));
+	UART2_SendChar(hex_to_char((value >> 8) & 0x0F));
+	UART2_SendChar(hex_to_char((value >> 4) & 0x0F));
+	UART2_SendChar(hex_to_char(value & 0x0F));
+}

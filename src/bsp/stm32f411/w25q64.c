@@ -29,13 +29,11 @@ void W25Q64_Init(void) {
     SPI1->CR1 = SPI_CR1_MSTR |        // STM32 — Мастер шины
                 SPI_CR1_SSM  |        // Программное управление CS
                 SPI_CR1_SSI  |        // Внутренний сигнал CS в режиме
-				//SPI_CR1_CPOL |        
-                //SPI_CR1_CPHA |
-                (6 << SPI_CR1_BR_Pos);
+                (2 << SPI_CR1_BR_Pos);
                 
     SPI1->CR1 |= SPI_CR1_SPE;
 
-     GPIOA->MODER &= ~(GPIO_MODER_MODER5 | GPIO_MODER_MODER6 | GPIO_MODER_MODER7);
+    GPIOA->MODER &= ~(GPIO_MODER_MODER5 | GPIO_MODER_MODER6 | GPIO_MODER_MODER7);
     GPIOA->MODER |= (GPIO_MODER_MODER5_1 | GPIO_MODER_MODER6_1 | GPIO_MODER_MODER7_1);
 
 	GPIOA->AFR[0] &= ~((0x0F << GPIO_AFRL_AFSEL5_Pos) | 
@@ -50,17 +48,8 @@ void W25Q64_Init(void) {
 	GPIOA->BSRR = GPIO_BSRR_BS4;
     GPIOA->MODER &= ~GPIO_MODER_MODER4;
     GPIOA->MODER |= GPIO_MODER_MODER4_0; // General purpose output
-
-    //GPIOA->PUPDR &= ~(GPIO_PUPDR_PUPDR6);
-    // Выставляем значение 01 — Pull-Up (подтяжка к 3.3V)
-    //GPIOA->PUPDR |= GPIO_PUPDR_PUPDR6_0; 
-
-	// 5. ИСПРАВЛЕНИЕ ДЛЯ PUYA: Будим флешку из глубокого сна (Release from Deep Power-Down)
-    W25Q64_CS_Low();
-    SPI1_Transfer(CMD_RELEASE_POWERDOWN); // Шлем команду 0xAB
-    W25Q64_CS_High();
     
-    // Даем флешке Puya короткую паузу (около 30 микросекунд), чтобы её логика проснулась
+    // Даем флешке Puya короткую паузу
     for(volatile int i = 0; i < 500; i++) { __NOP(); }
 }
 
