@@ -55,7 +55,7 @@ void W25Q64_Init(void) {
                      (5 << GPIO_AFRL_AFSEL6_Pos) | 
                      (5 << GPIO_AFRL_AFSEL7_Pos);
 
-    // Настройка скорости, оказалась критически важной
+    // Настройка скорости, обязательно!
     GPIOA->OSPEEDR &= ~(GPIO_OSPEEDER_OSPEEDR5 | GPIO_OSPEEDER_OSPEEDR6 | GPIO_OSPEEDER_OSPEEDR7);
     GPIOA->OSPEEDR |= (GPIO_OSPEEDER_OSPEEDR5_0 | GPIO_OSPEEDER_OSPEEDR6_0 | GPIO_OSPEEDER_OSPEEDR7_0);
 
@@ -110,15 +110,10 @@ void W25Q64_Read(uint32_t addr, uint8_t* buf, uint32_t len) {
     for(volatile int i = 0; i < 5; i++) { __NOP(); }
 
     SPI1_Transfer(CMD_READ_DATA);
-
-    uint8_t addr_bytes[3];
-    addr_bytes[0] = (uint8_t)((addr >> 16) & 0xFF);
-    addr_bytes[1] = (uint8_t)((addr >> 8) & 0xFF);
-    addr_bytes[2] = (uint8_t)(addr & 0xFF);
     
-    SPI1_Transfer(addr_bytes[0]); // Старший байт адреса
-    SPI1_Transfer(addr_bytes[1]); // Средний байт адреса
-    SPI1_Transfer(addr_bytes[2]); // Младший байт адреса
+    SPI1_Transfer((uint8_t)((addr >> 16) & 0xFF)); // Старший байт адреса
+    SPI1_Transfer((uint8_t)((addr >> 8) & 0xFF)); // Средний байт адреса
+    SPI1_Transfer((uint8_t)(addr & 0xFF)); // Младший байт адреса
 
     // 2. Выкачиваем байты из флешки один за другим
     for (uint32_t i = 0; i < len; i++) {
@@ -143,14 +138,9 @@ void W25Q64_WritePage(uint32_t addr, uint8_t* buf, uint32_t len) {
     W25Q64_CS_Low();
     SPI1_Transfer(CMD_PAGE_PROGRAM);
 
-    uint8_t addr_bytes[3];
-    addr_bytes[0] = (uint8_t)((addr >> 16) & 0xFF);
-    addr_bytes[1] = (uint8_t)((addr >> 8) & 0xFF);
-    addr_bytes[2] = (uint8_t)(addr & 0xFF);
-    
-    SPI1_Transfer(addr_bytes[0]); // Старший байт адреса
-    SPI1_Transfer(addr_bytes[1]); // Средний байт адреса
-    SPI1_Transfer(addr_bytes[2]); // Младший байт адреса
+    SPI1_Transfer((uint8_t)((addr >> 16) & 0xFF)); // Старший байт адреса
+    SPI1_Transfer((uint8_t)((addr >> 8) & 0xFF)); // Средний байт адреса
+    SPI1_Transfer((uint8_t)(addr & 0xFF)); // Младший байт адреса
 
     // 3. Заталкиваем байты данных в буфер флешки
     for (uint32_t i = 0; i < len; i++) {
@@ -172,14 +162,9 @@ void W25Q64_EraseSector(uint32_t addr) {
     W25Q64_CS_Low();
     SPI1_Transfer(CMD_SECTOR_ERASE_4K);
 
-    uint8_t addr_bytes[3];
-    addr_bytes[0] = (uint8_t)((addr >> 16) & 0xFF);
-    addr_bytes[1] = (uint8_t)((addr >> 8) & 0xFF);
-    addr_bytes[2] = (uint8_t)(addr & 0xFF);
-    
-    SPI1_Transfer(addr_bytes[0]); // Старший байт адреса
-    SPI1_Transfer(addr_bytes[1]); // Средний байт адреса
-    SPI1_Transfer(addr_bytes[2]); // Младший байт адреса
+    SPI1_Transfer((uint8_t)((addr >> 16) & 0xFF)); // Старший байт адреса
+    SPI1_Transfer((uint8_t)((addr >> 8) & 0xFF)); // Средний байт адреса
+    SPI1_Transfer((uint8_t)(addr & 0xFF)); // Младший байт адреса
     W25Q64_CS_High();
 
     W25Q64_WaitReady();

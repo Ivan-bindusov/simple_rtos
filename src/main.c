@@ -3,34 +3,18 @@
 
 volatile uint16_t flashID = 0;
 
-uint8_t tx_log_buffer[] = "LOG: [OK] System started. Core frequency 100MHz.";
-uint8_t rx_log_buffer[256] = {0}; // Буфер для вычитывания
-
 void Task1_HeapTest(void) {
     OS_Delay(10);
 
-    for (uint32_t i = 0; i < sizeof(rx_log_buffer); i++) {
-        rx_log_buffer[i] = 0;
-    }
+    OS_Log_Init();
 
-    // 1. Стираем сектор 0 (первые 4 КБ памяти) перед записью
-    UART2_SendString("Flash: Sector erasing 0...\r\n");
-    W25Q64_EraseSector(0x00000000);
+    OS_Log_DumpToUART();
 
-    // 2. Записываем тестовую строчку лога по адресу 0
-    UART2_SendString("Flash: Writing system log...\r\n");
-    W25Q64_WritePage(0x00000000, tx_log_buffer, sizeof(tx_log_buffer));
-
-    // 3. Вычитываем записанные данные обратно в пустой rx_log_buffer
-    UART2_SendString("Flash: Reading data from memory...\r\n");
-    W25Q64_Read(0x00000000, rx_log_buffer, sizeof(rx_log_buffer));
-
-    // 4. Печатаем то, что прочитали из физического кремния флешки
-    UART2_SendString("Resault from Flash: ");
-    UART2_SendString((const char*)rx_log_buffer);
-    UART2_SendString("\r\n---------------------------------\r\n");
+    OS_Log_Write(1, "Error: Pressure detector was wrong 222");
 
     while(1) {
+        flashID = W25Q64_ReadID();
+        //UART2_SendHex16(flashID);
         OS_Delay(1000);
     }
 }

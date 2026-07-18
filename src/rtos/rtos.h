@@ -6,6 +6,7 @@
 #include "stm32f411xe.h"
 
 #include "core/rtos_core.h"
+#include "core/rtos_log.h"
 #include "mem/rtos_heap.h"
 #include "ipc/rtos_mutex.h"
 #include "ipc/rtos_queue.h"
