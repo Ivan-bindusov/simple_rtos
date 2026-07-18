@@ -8,25 +8,12 @@ void Task1_HeapTest(void) {
 
     OS_Log_Init();
 
-    OS_Log_Write(1, "Test");
-
     OS_Log_DumpToUART();
 
 
     while(1) {
         flashID = W25Q64_ReadID();
         //UART2_SendHex16(flashID);
-        OS_Delay(1000);
-    }
-}
-
-void Task2_Ahtung(void) {
-    OS_Delay(500);
-
-    uint32_t* canaryPtr = &TaskStacks[1][0];
-    *canaryPtr = 0xAAAAAAAA;
-
-    while(1) {
         OS_Delay(1000);
     }
 }
@@ -74,7 +61,6 @@ int main(void) {
     OS_Heap_Init();
 
     Task_Create(0, 10, Task1_HeapTest);
-    Task_Create(1, 2, Task2_Ahtung);
     Task_Create(4, 255, Task4_Idle);
 
     SysTick_Init(100000000 / 1000);

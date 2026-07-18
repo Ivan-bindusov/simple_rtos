@@ -121,6 +121,90 @@ void Sensor_Task(void) {
     }
 }
 ```
+
+## Использование приоритетных семафоров (Semaphores)
+Приоритетные семафоры в IvanOS гарантируют, что при освобождении ресурса управление передается строго самой важной задаче из очереди ожидания.
+```
+#include "rtos/rtos.h"
+
+Semaphore_t dataReadySem;
+
+// Задача 1: НИЗКИЙ ПРИОРИТЕТ (Индекс 0, Приоритет 50)
+void Task_Low_Consumer(void) {
+    while(1) {
+        // Засыпаем в ожидании семафора. Таймаут — бесконечный (0xFFFFFFFF)
+        if (Semaphore_Take(&dataReadySem, 0xFFFFFFFF)) {
+            // Обработка данных (проснется ВТОРОЙ)
+            UART2_SendString("Low task processed resource\r\n");
+        }
+    }
+}
+
+// Задача 2: ВЫСОКИЙ ПРИОРИТЕТ (Индекс 1, Приоритет 2)
+void Task_High_Consumer(void) {
+    while(1) {
+        if (Semaphore_Take(&dataReadySem, 0xFFFFFFFF)) {
+            // Обработка критических данных (благодаря коду Вани проснется ПЕРВЫМ)
+            UART2_SendString("High task processed resource\r\n");
+        }
+    }
+}
+
+// Задача 3: ИСТОЧНИК ДАННЫХ (Индекс 2, Приоритет 5)
+void Task_Producer(void) {
+    // Инициализация семафора: изначально 0 разрешений, максимум 1 (бинарный)
+    Semaphore_Init(&dataReadySem, 0, 1);
+    
+    while(1) {
+        OS_Delay(500); // Собираем данные раз в полсекунды
+        
+        // Выдаем семафор. Ядро сканирует TCB и будит строго Task_High_Consumer!
+        Semaphore_Give(&dataReadySem);
+    }
+}
+
+```
+## Использование потокобезопасных очередей сообщений (Message Queues)
+Очереди сообщений позволяют задачам безопасно обмениваться данными по принципу FIFO (First-In, First-Out), автоматически усыпляя потоки-читатели, если данных нет, и потоки-писатели, если очередь переполнена.
+```
+#include "rtos/rtos.h"
+
+Queue_t adcQueue;
+
+// Задача-Обработчик (Приоритет 10, Индекс 0)
+void Task_Data_Processor(void) {
+    uint32_t receivedValue = 0;
+    
+    while(1) {
+        // Здесь строго ПЕРЕДАЧА ПО ССЫЛКЕ (&receivedValue), как в твоем Queue_Receive
+        if (Queue_Receive(&adcQueue, &receivedValue)) {
+            UART2_SendString("Лог: Данные из очереди = ");
+            UART2_SendHex16((uint16_t)receivedValue);
+            UART2_SendString("\r\n");
+        }
+        
+        OS_Delay(50); 
+    }
+}
+
+// Задача-Сенсор (Приоритет 4, Индекс 1)
+void Task_ADC_Sensor(void) {
+    // Инициализация очереди
+    Queue_Init(&adcQueue);
+    
+    uint32_t simulatedRawData = 100;
+    
+    while(1) {
+        OS_Delay(200); 
+        
+        // Здесь ПЕРЕДАЧА ПО ЗНАЧЕНИЮ (simulatedRawData)
+        if (Queue_Send(&adcQueue, simulatedRawData)) {
+            simulatedRawData += 5; 
+        }
+    }
+}
+```
+
 ## Структура проекта (Clean Architecture)
 
 Проект выполнен по принципу модульности, где каждый сервис ОСРВ полностью изолирован и находится в своей директории. Сборка автоматизирована через динамический `Makefile`.
