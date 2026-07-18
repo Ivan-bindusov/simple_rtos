@@ -3,25 +3,35 @@
 
 volatile uint16_t flashID = 0;
 
+uint8_t tx_log_buffer[] = "LOG: [OK] System started. Core frequency 100MHz.";
+uint8_t rx_log_buffer[256] = {0}; // Буфер для вычитывания
+
 void Task1_HeapTest(void) {
     OS_Delay(10);
 
-    while(1) {
-        flashID = W25Q64_ReadID();
+    for (uint32_t i = 0; i < sizeof(rx_log_buffer); i++) {
+        rx_log_buffer[i] = 0;
+    }
 
-        if (flashID == 0x8516 || flashID == 0x8517) {
-            UART2_SendString("Log flash memory ID: ");
-            UART2_SendHex16(flashID);
-            UART2_SendString("\r\n");
-            GPIOC->ODR ^= GPIO_ODR_ODR_13;
-            OS_Delay(1000);
-        } else {
-            UART2_SendString("Error flash ID was wrong. Was read: ");
-            UART2_SendHex16(flashID);
-            UART2_SendString("\r\n");
-            GPIOC->ODR ^= GPIO_ODR_ODR_13;
-            OS_Delay(500);
-        }
+    // 1. Стираем сектор 0 (первые 4 КБ памяти) перед записью
+    UART2_SendString("Flash: Sector erasing 0...\r\n");
+    W25Q64_EraseSector(0x00000000);
+
+    // 2. Записываем тестовую строчку лога по адресу 0
+    UART2_SendString("Flash: Writing system log...\r\n");
+    W25Q64_WritePage(0x00000000, tx_log_buffer, sizeof(tx_log_buffer));
+
+    // 3. Вычитываем записанные данные обратно в пустой rx_log_buffer
+    UART2_SendString("Flash: Reading data from memory...\r\n");
+    W25Q64_Read(0x00000000, rx_log_buffer, sizeof(rx_log_buffer));
+
+    // 4. Печатаем то, что прочитали из физического кремния флешки
+    UART2_SendString("Resault from Flash: ");
+    UART2_SendString((const char*)rx_log_buffer);
+    UART2_SendString("\r\n---------------------------------\r\n");
+
+    while(1) {
+        OS_Delay(1000);
     }
 }
 

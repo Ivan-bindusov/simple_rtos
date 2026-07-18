@@ -5,6 +5,7 @@
 #include "stm32f411xe.h"
 
 // Команды управления флеш-памятью Winbond
+#define CMD_WRITE_STATUS_REG1 0x01
 #define CMD_WRITE_ENABLE      0x06
 #define CMD_WRITE_DISABLE     0x04
 #define CMD_READ_STATUS_REG1  0x05
@@ -16,6 +17,11 @@
 
 void W25Q64_Init(void);
 uint16_t W25Q64_ReadID(void);
+uint8_t W25Q64_ReadStatus(void);
+void W25Q64_WaitReady(void);
+void W25Q64_Read(uint32_t addr, uint8_t* buf, uint32_t len);
+void W25Q64_WritePage(uint32_t addr, uint8_t* buf, uint32_t len);
+void W25Q64_EraseSector(uint32_t addr);
 void W25Q64_Read(uint32_t addr, uint8_t* buf, uint32_t len);
 void W25Q64_WritePage(uint32_t addr, uint8_t* buf, uint32_t len);
 void W25Q64_EraseSector(uint32_t addr);
