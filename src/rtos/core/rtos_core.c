@@ -1,4 +1,6 @@
 #include "rtos_core.h"
+#include "core/rtos_log.h"
+#include "../bsp/stm32f411/uart.h"
 
 //выделение памяти под структуры ОС
 TCB_t TCBs[MAX_TASKS];
@@ -7,6 +9,12 @@ uint32_t __attribute__((aligned(8))) TaskStacks[MAX_TASKS][STACK_SIZE];
 
 void OS_StackOverflow_Handler(uint32_t brokenTaskIndex) {
     __asm volatile ("cpsid i");
+
+    UART2_SendString("AHTUNG! Stack overflow. In the task: ");
+    UART2_SendChar('0' + brokenTaskIndex);
+    UART2_SendString("\n\r");
+
+    OS_Log_Write((uint8_t)brokenTaskIndex, "AHTUNG: Stack Overflow was detected. Canary corrupted");
 
     //быстро мигаем светодиодом
     while(1) {

@@ -31,7 +31,7 @@ void OS_Log_Write(uint8_t taskIdx, const char* msg) {
 
 	entry.magic = LOG_MAGIC_BYTE;
 	entry.timestamp = 0;
-	entry.taskIndex = currentTask;
+	entry.taskIndex = taskIdx;
 
 	uint32_t i = 0;
 	while (msg[i] != '\0' && i < 245) {
@@ -65,7 +65,7 @@ void OS_Log_DumpToUART(void) {
 	uint32_t max_addr = LOG_SECTOR_START + (LOG_SECTOR_COUNT * LOG_SECTOR_SIZE);
 	LogEntry_t entry;
 
-	UART2_SendString("\r\n=== Dump black box of RTOS === \r\n");
+	UART2_SendString("\r\n=== Dump black box of RTOS ===\r\n");
 
 	for (uint32_t addr = LOG_SECTOR_START; addr < max_addr; addr += LOG_PAGE_SIZE) {
 		W25Q64_Read(addr, (uint8_t*)&entry, sizeof(LogEntry_t));
