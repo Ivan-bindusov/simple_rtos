@@ -1,7 +1,29 @@
 #include "rtos/rtos.h"
 #include "bsp/stm32f411/w25q64.h"
 
-volatile uint16_t flashID = 0;
+#define LIS_CS_LOW() (GPIOA->BSRR |= GPIO_BSRR_BR5);
+#define LIS_CS_HIGH() (GPIOA->BSRR |= GPIO_BSRR_BS5);
+
+extern Mutex_t spi1Mutex;
+
+void LIS3DSH_Hardware_Init(void) {
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+
+    // Настройка пина PA3 как Output для CS
+    GPIOA->MODER &= ~(GPIO_MODER_MODE5);
+    GPIOA->MODER |= (1 << GPIO_MODER_MODE5_Pos);
+    LIS_CS_HIGH(); // Иначально чип отключен
+
+    // Настройка прерывания от датчика
+    RCC->APB2ENR |= RCC_APB2ENR_SYSCFGEN;
+    SYSCFG->EXTICR[0] &= ~SYSCFG_EXTICR1_EXTI0;
+
+    EXTI->IMR |= EXTI_IMR_IM0; // Разрешаем прерывание EXTI0
+    EXTI->RTSR |= EXTI_RTSR_TR0; // Срабатывание по переднему фронту
+
+    NVIC_SetPriority(EXTI0_IRQn, 6);
+    NVIC_EnableIRQ(EXTI0_IRQn);
+}
 
 void Task1_HeapTest(void) {
     OS_Delay(10);
@@ -12,8 +34,6 @@ void Task1_HeapTest(void) {
 
 
     while(1) {
-        flashID = W25Q64_ReadID();
-        //UART2_SendHex16(flashID);
         OS_Delay(1000);
     }
 }
