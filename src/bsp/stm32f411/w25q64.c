@@ -105,20 +105,26 @@ void W25Q64_Read(uint32_t addr, uint8_t* buf, uint32_t len) {
 
     W25Q64_WaitReady();
 
+    // 1. ЗАЩИТА: Блокируем шину SPI1 для нашей текущей задачи логгера
+    RTOS_SPI_LockBus(RTOS_SPI_1); 
+
     W25Q64_CS_Low();
     // Небольшая задержка после CS
     for(volatile int i = 0; i < 5; i++) { __NOP(); }
 
-    SPI1_Transfer(CMD_READ_DATA);
+    // 2. Шлем команду через наш универсальный HAL-слой
+    uint8_t cmd = CMD_READ_DATA;
+    RTOS_SPI_Transmit(RTOS_SPI_1, &cmd, 1);
     
-    SPI1_Transfer((uint8_t)((addr >> 16) & 0xFF)); // Старший байт адреса
-    SPI1_Transfer((uint8_t)((addr >> 8) & 0xFF)); // Средний байт адреса
-    SPI1_Transfer((uint8_t)(addr & 0xFF)); // Младший байт адреса
+    // 3. Отправляем массив байт адреса
+    uint8_t addr_bytes[3];
+    addr_bytes[0] = (uint8_t)((addr >> 16) & 0xFF);
+    addr_bytes[1] = (uint8_t)((addr >> 8)  & 0xFF);
+    addr_bytes[2] = (uint8_t)(addr         & 0xFF);
+    RTOS_SPI_Transmit(RTOS_SPI_1, addr_bytes, 3);
 
-    // 2. Выкачиваем байты из флешки один за другим
-    for (uint32_t i = 0; i < len; i++) {
-        buf[i] = SPI1_Transfer(0x00); // Шлем фиктивный байт, забираем данные
-    }
+    // 4. Пакетно выкачиваем данные из флешки напрямую в буфер пользователя
+    RTOS_SPI_Receive(RTOS_SPI_1, buf, len);
     
     W25Q64_CS_High(); // Отпускаем флешку
 }
