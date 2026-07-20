@@ -18,12 +18,11 @@ void RTOS_SPI_Init(RTOS_SPI_Num_t spiNum, RTOS_SPI_Mode_t mode, RTOS_SPI_Baud_t 
 
 	// 2. Аппаратно включаем тактирование шин и настраиваем GPIO в зависимости от модуля
     if (spiNum == RTOS_SPI_1) {
-        // SPI1 сидит на высокоскоростной шине APB2 (100 МГц)
-        RCC->APB2ENR |= RCC_APB2ENR_SPI1EN;
-        volatile uint32_t dummy = RCC->APB2ENR; (void)dummy; // Даем шине стабилизировать ток
-        
-        // Включаем тактирование портов GPIOA
+        // Включаем тактирование портов GPIOA и модуля SPI1
         RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+        RCC->APB2ENR |= RCC_APB2ENR_SPI1EN;
+
+        for(volatile int i = 0; i < 100; i++) { __NOP(); }
         
         // Переводим PA5 (SCK), PA6 (MISO), PA7 (MOSI) в режим Альтернативной Функции (10 - AF mode)
         GPIOA->MODER &= ~(GPIO_MODER_MODER5 | GPIO_MODER_MODER6 | GPIO_MODER_MODER7);
@@ -31,6 +30,7 @@ void RTOS_SPI_Init(RTOS_SPI_Num_t spiNum, RTOS_SPI_Mode_t mode, RTOS_SPI_Baud_t 
         
         // Переводим ножки в High Speed режим (0x10 или 0x11 в OSPEEDR)
         // Взводим 0-й бит маски скорости для пинов 5, 6, 7 — выставляем высокую скорость
+        GPIOA->OSPEEDR &= ~(GPIO_OSPEEDER_OSPEEDR5 | GPIO_OSPEEDER_OSPEEDR6 | GPIO_OSPEEDER_OSPEEDR7);
         GPIOA->OSPEEDR |= (GPIO_OSPEEDER_OSPEEDR5_0 | GPIO_OSPEEDER_OSPEEDR6_0 | GPIO_OSPEEDER_OSPEEDR7_0);
         
         // Чистим и жестко записываем AF5 (SPI1) в регистр альтернативных функций AFR[0] (он же AFRL)
@@ -39,6 +39,8 @@ void RTOS_SPI_Init(RTOS_SPI_Num_t spiNum, RTOS_SPI_Mode_t mode, RTOS_SPI_Baud_t 
         
         // Полностью отключаем внутренние подтяжки, чтобы сигналы переключались без емкостных тормозов
         GPIOA->PUPDR &= ~(GPIO_PUPDR_PUPDR5 | GPIO_PUPDR_PUPDR6 | GPIO_PUPDR_PUPDR7);
+
+        for(volatile int i = 0; i < 500; i++) { __NOP(); }
     }
 
 	// 3. НАСТРОЙКА УПРАВЛЯЮЩЕГО РЕГИСТРА CR1 (Control Register 1)
@@ -104,8 +106,6 @@ uint8_t RTOS_SPI_TransferByte(RTOS_SPI_Num_t spiNum, uint8_t data) {
 // Пакетная передача массива данных (Блокирующий режим вывода)
 void RTOS_SPI_Transmit(RTOS_SPI_Num_t spiNum, const uint8_t* pTxData, uint32_t size) {
     for (uint32_t i = 0; i < size; i++) {
-        // При пакетной отправке мы обязаны считывать ответный байт в пустоту,
-        // чтобы не переполнить внутренний регистр приемника SPI (ошибка Overrun)
         (void)RTOS_SPI_TransferByte(spiNum, pTxData[i]);
     }
 }
@@ -113,7 +113,6 @@ void RTOS_SPI_Transmit(RTOS_SPI_Num_t spiNum, const uint8_t* pTxData, uint32_t s
 // Пакетный прием массива данных
 void RTOS_SPI_Receive(RTOS_SPI_Num_t spiNum, uint8_t* pRxData, uint32_t size) {
     for (uint32_t i = 0; i < size; i++) {
-        // Отправляем флешке пустой байт 0x00, чтобы сгенерировать такты SCK, и забираем данные
         pRxData[i] = RTOS_SPI_TransferByte(spiNum, 0x00);
     }
 }

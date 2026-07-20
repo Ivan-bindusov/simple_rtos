@@ -5,24 +5,16 @@
 static inline void W25Q64_CS_Low(void) { GPIOA->BSRR = GPIO_BSRR_BR4; }
 static inline void W25Q64_CS_High(void) { GPIOA->BSRR = GPIO_BSRR_BS4; }
 
-uint8_t spi_transfer(uint8_t data) {
-    while (!(SPI1->SR & SPI_SR_TXE));
-
-    SPI1->DR = data;
-
-    while (!(SPI1->SR & SPI_SR_RXNE));
-
-    return (uint8_t)(SPI1->DR);
-}
-
 void W25Q64_Init(void) {
 
 	RTOS_SPI_Init(RTOS_SPI_1, RTOS_SPI_MODE_3, RTOS_SPI_BAUD_DIV_128);
 
+    GPIOA->MODER &= ~GPIO_MODER_MODER4;
+    GPIOA->MODER |= GPIO_MODER_MODER4_0; // General purpose output
+    GPIOA->OTYPER &= ~GPIO_OTYPER_OT4;   // Push-pull
+    GPIOA->PUPDR &= ~GPIO_PUPDR_PUPDR4;
+
     W25Q64_CS_High();
-    
-    // Даем флешке Puya короткую паузу
-    for(volatile int i = 0; i < 500; i++) { __NOP(); }
 }
 
 uint8_t W25Q64_ReadStatus(void) {
@@ -88,18 +80,10 @@ void W25Q64_Read(uint32_t addr, uint8_t* buf, uint32_t len) {
     // Блокируем шину SPI1 для нашей текущей задачи логгера
     RTOS_SPI_LockBus(RTOS_SPI_1);
 
-    // (void)spi_transfer(CMD_READ_DATA);
-    // (void)spi_transfer(cmd_addr_buf[1]);
-    // (void)spi_transfer(cmd_addr_buf[2]);
-    // (void)spi_transfer(cmd_addr_buf[3]);
-
     RTOS_SPI_Transmit(RTOS_SPI_1, cmd_addr_buf, 4);
 
     // Пакетно выкачиваем данные из флешки напрямую в буфер пользователя
     RTOS_SPI_Receive(RTOS_SPI_1, buf, len);
-    // for (uint8_t i=0;i<len;i++) {
-    //     buf[i] = (uint8_t)spi_transfer(0x00);
-    // }
     
     W25Q64_CS_High(); // Отпускаем флешку
 
