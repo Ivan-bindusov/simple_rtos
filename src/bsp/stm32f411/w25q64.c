@@ -5,62 +5,21 @@
 static inline void W25Q64_CS_Low(void) { GPIOA->BSRR = GPIO_BSRR_BR4; }
 static inline void W25Q64_CS_High(void) { GPIOA->BSRR = GPIO_BSRR_BS4; }
 
-// Приемопередача 1 байта по SPI
-static uint8_t SPI1_Transfer(uint8_t data) {
-	while (!(SPI1->SR & SPI_SR_TXE));
+uint8_t spi_transfer(uint8_t data) {
+    while (!(SPI1->SR & SPI_SR_TXE));
 
-	SPI1->DR = data;
+    SPI1->DR = data;
 
-	while (!(SPI1->SR & SPI_SR_RXNE));
+    while (!(SPI1->SR & SPI_SR_RXNE));
 
-	return (uint8_t)SPI1->DR;
+    return (uint8_t)(SPI1->DR);
 }
 
 void W25Q64_Init(void) {
-	// 1. Включаем тактирование портов GPIOA и модуля SPI1
-    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
-    RCC->APB2ENR |= RCC_APB2ENR_SPI1EN;
-    volatile uint32_t dummy = RCC->APB2ENR; (void)dummy;
 
-    for(volatile int i = 0; i < 100; i++) { __NOP(); }
+	RTOS_SPI_Init(RTOS_SPI_1, RTOS_SPI_MODE_3, RTOS_SPI_BAUD_DIV_128);
 
-    // Настраиваем PA4 как обычный выход GPIO (для ручного управления CS)
-    GPIOA->MODER &= ~GPIO_MODER_MODER4;
-    GPIOA->MODER |= GPIO_MODER_MODER4_0; // General purpose output
-    GPIOA->OTYPER &= ~GPIO_OTYPER_OT4;   // Push-pull
-    GPIOA->PUPDR &= ~GPIO_PUPDR_PUPDR4;
-    //GPIOA->PUPDR |= GPIO_PUPDR_PUPDR4_0; // Pull-up
-	GPIOA->BSRR = GPIO_BSRR_BS4;
-
-	// Конфигурация регистра SPI1->CR1
-    // Базовая частота SPI1 на Black Pill = 100 МГц / 2 = 50 МГц.
-    SPI1->CR1 = 0;
-    SPI1->CR1 = SPI_CR1_MSTR |        // STM32 — Мастер шины
-                SPI_CR1_SSM  |        // Программное управление CS
-                SPI_CR1_SSI  |        // Внутренний сигнал CS в режиме
-                SPI_CR1_CPOL |
-                SPI_CR1_CPHA |
-                (3 << SPI_CR1_BR_Pos);
-                
-    SPI1->CR1 |= SPI_CR1_SPE;
-
-    GPIOA->MODER &= ~(GPIO_MODER_MODER5 | GPIO_MODER_MODER6 | GPIO_MODER_MODER7);
-    GPIOA->MODER |= (GPIO_MODER_MODER5_1 | GPIO_MODER_MODER6_1 | GPIO_MODER_MODER7_1);
-
-	GPIOA->AFR[0] &= ~((0x0F << GPIO_AFRL_AFSEL5_Pos) | 
-                       (0x0F << GPIO_AFRL_AFSEL6_Pos) | 
-                       (0x0F << GPIO_AFRL_AFSEL7_Pos));
-    
-    GPIOA->AFR[0] |= (5 << GPIO_AFRL_AFSEL5_Pos) | 
-                     (5 << GPIO_AFRL_AFSEL6_Pos) | 
-                     (5 << GPIO_AFRL_AFSEL7_Pos);
-
-    // Настройка скорости, обязательно!
-    GPIOA->OSPEEDR &= ~(GPIO_OSPEEDER_OSPEEDR5 | GPIO_OSPEEDER_OSPEEDR6 | GPIO_OSPEEDER_OSPEEDR7);
-    GPIOA->OSPEEDR |= (GPIO_OSPEEDER_OSPEEDR5_0 | GPIO_OSPEEDER_OSPEEDR6_0 | GPIO_OSPEEDER_OSPEEDR7_0);
-
-    GPIOA->PUPDR &= ~(GPIO_PUPDR_PUPDR5 | GPIO_PUPDR_PUPDR6 | GPIO_PUPDR_PUPDR7);
-    //GPIOA->PUPDR |= (GPIO_PUPDR_PUPDR5_0 | GPIO_PUPDR_PUPDR6_0 | GPIO_PUPDR_PUPDR7_0);
+    W25Q64_CS_High();
     
     // Даем флешке Puya короткую паузу
     for(volatile int i = 0; i < 500; i++) { __NOP(); }
@@ -68,11 +27,19 @@ void W25Q64_Init(void) {
 
 uint8_t W25Q64_ReadStatus(void) {
     uint8_t status = 0;
+    uint8_t cmd = CMD_READ_STATUS_REG1;
 
+    RTOS_SPI_LockBus(RTOS_SPI_1);
     W25Q64_CS_Low();
-    SPI1_Transfer(CMD_READ_STATUS_REG1);
-    status = SPI1_Transfer(0x00);
+    
+    // Отправляем команду
+    RTOS_SPI_Transmit(RTOS_SPI_1, &cmd, 1);
+    // Принимаем 1 байт ответа
+    RTOS_SPI_Receive(RTOS_SPI_1, &status, 1);
+
     W25Q64_CS_High();
+
+    RTOS_SPI_UnlockBus(RTOS_SPI_1);
 
     return status;
 }
@@ -85,18 +52,22 @@ void W25Q64_WaitReady(void) {
 
 // Функция проверки связи: читает ID производителя флешки (должно вернуться 0xEF16)
 uint16_t W25Q64_ReadID(void) {
+    uint8_t cmd_buf[4] = { CMD_MANUFACTURER_ID, 0x00, 0x00, 0x00 }; // Команда 0x90 + 3 байта фиктивного адреса
+    uint8_t id_buf[2] = {0};
     uint16_t id = 0;
+    
+    RTOS_SPI_LockBus(RTOS_SPI_1);
     W25Q64_CS_Low();
-    
-    SPI1_Transfer(CMD_MANUFACTURER_ID);
-    SPI1_Transfer(0x00); // 3 фиктивных байта адреса по даташиту
-    SPI1_Transfer(0x00);
-    SPI1_Transfer(0x00);
-    
-    id |= (SPI1_Transfer(0x00) << 8); // Считываем Manufacturer ID (0xEF)
-    id |= SPI1_Transfer(0x00);        // Считываем Device ID (0x16)
-    
+
+    // Пакетно выстреливаем команду и адрес за один вызов!
+    RTOS_SPI_Transmit(RTOS_SPI_1, cmd_buf, 4);
+    // Пакетно забираем 2 байта паспорта чипа
+    RTOS_SPI_Receive(RTOS_SPI_1, id_buf, 2);
+
     W25Q64_CS_High();
+    RTOS_SPI_UnlockBus(RTOS_SPI_1);
+
+    id = (id_buf[0] << 8) | id_buf[1];
     return id;
 }
 
@@ -105,73 +76,95 @@ void W25Q64_Read(uint32_t addr, uint8_t* buf, uint32_t len) {
 
     W25Q64_WaitReady();
 
-    // 1. ЗАЩИТА: Блокируем шину SPI1 для нашей текущей задачи логгера
-    RTOS_SPI_LockBus(RTOS_SPI_1); 
-
     W25Q64_CS_Low();
-    // Небольшая задержка после CS
-    for(volatile int i = 0; i < 5; i++) { __NOP(); }
-
-    // 2. Шлем команду через наш универсальный HAL-слой
-    uint8_t cmd = CMD_READ_DATA;
-    RTOS_SPI_Transmit(RTOS_SPI_1, &cmd, 1);
     
-    // 3. Отправляем массив байт адреса
-    uint8_t addr_bytes[3];
-    addr_bytes[0] = (uint8_t)((addr >> 16) & 0xFF);
-    addr_bytes[1] = (uint8_t)((addr >> 8)  & 0xFF);
-    addr_bytes[2] = (uint8_t)(addr         & 0xFF);
-    RTOS_SPI_Transmit(RTOS_SPI_1, addr_bytes, 3);
+    // Отправляем массив байт адреса
+    uint8_t cmd_addr_buf[4];
+    cmd_addr_buf[0] = CMD_READ_DATA; // 0x03
+    cmd_addr_buf[1] = (uint8_t)((addr >> 16) & 0xFF);
+    cmd_addr_buf[2] = (uint8_t)((addr >> 8)  & 0xFF);
+    cmd_addr_buf[3] = (uint8_t)(addr         & 0xFF);
 
-    // 4. Пакетно выкачиваем данные из флешки напрямую в буфер пользователя
+    // Блокируем шину SPI1 для нашей текущей задачи логгера
+    RTOS_SPI_LockBus(RTOS_SPI_1);
+
+    // (void)spi_transfer(CMD_READ_DATA);
+    // (void)spi_transfer(cmd_addr_buf[1]);
+    // (void)spi_transfer(cmd_addr_buf[2]);
+    // (void)spi_transfer(cmd_addr_buf[3]);
+
+    RTOS_SPI_Transmit(RTOS_SPI_1, cmd_addr_buf, 4);
+
+    // Пакетно выкачиваем данные из флешки напрямую в буфер пользователя
     RTOS_SPI_Receive(RTOS_SPI_1, buf, len);
+    // for (uint8_t i=0;i<len;i++) {
+    //     buf[i] = (uint8_t)spi_transfer(0x00);
+    // }
     
     W25Q64_CS_High(); // Отпускаем флешку
+
+    // Отпускаем мьютекс шины SPI1 для других задач ОСРВ
+    RTOS_SPI_UnlockBus(RTOS_SPI_1);
 }
 
 void W25Q64_WritePage(uint32_t addr, uint8_t* buf, uint32_t len) {
     if (len == 0 || buf == NULL || len > 256) return;
 
-    // 1. Снимаем защиту записи
+    uint8_t cmd_en = CMD_WRITE_ENABLE; // 0x06
+    uint8_t cmd_addr_buf[4];
+    cmd_addr_buf[0] = CMD_PAGE_PROGRAM; // 0x02
+    cmd_addr_buf[1] = (uint8_t)((addr >> 16) & 0xFF);
+    cmd_addr_buf[2] = (uint8_t)((addr >> 8)  & 0xFF);
+    cmd_addr_buf[3] = (uint8_t)(addr         & 0xFF);
+
+    // Включаем Write Enable (короткая независимая транзакция)
+    RTOS_SPI_LockBus(RTOS_SPI_1);
     W25Q64_CS_Low();
-    SPI1_Transfer(CMD_WRITE_ENABLE);
+    RTOS_SPI_Transmit(RTOS_SPI_1, &cmd_en, 1);
+    W25Q64_CS_High();
+    RTOS_SPI_UnlockBus(RTOS_SPI_1);
+
+    for(volatile int i = 0; i < 50; i++); // Микропауза для установки WEL внутри флешки
+
+    RTOS_SPI_LockBus(RTOS_SPI_1);
+    W25Q64_CS_Low();
+
+    // Отправляем команду и адрес
+    RTOS_SPI_Transmit(RTOS_SPI_1, cmd_addr_buf, 4);
+    // Отправляем пакет байт полезных данных лога
+    RTOS_SPI_Transmit(RTOS_SPI_1, buf, len);
+
     W25Q64_CS_High();
 
-    // Короткая микросекундная пауза, чтобы флешка успела взвести флаг WEL
-    for(volatile int i = 0; i < 50; i++);
-
-    // 2. Отправляем команду записи страницы и адрес
-    W25Q64_CS_Low();
-    SPI1_Transfer(CMD_PAGE_PROGRAM);
-
-    SPI1_Transfer((uint8_t)((addr >> 16) & 0xFF)); // Старший байт адреса
-    SPI1_Transfer((uint8_t)((addr >> 8) & 0xFF)); // Средний байт адреса
-    SPI1_Transfer((uint8_t)(addr & 0xFF)); // Младший байт адреса
-
-    // 3. Заталкиваем байты данных в буфер флешки
-    for (uint32_t i = 0; i < len; i++) {
-        SPI1_Transfer(buf[i]);
-    }
-    W25Q64_CS_High();
+    RTOS_SPI_UnlockBus(RTOS_SPI_1);
 
     W25Q64_WaitReady();
 }
 
 // Функция стирания сектора (4 Килобайта) — обязательна перед записью в чистый сектор!
 void W25Q64_EraseSector(uint32_t addr) {
+    uint8_t cmd_en = CMD_WRITE_ENABLE;
+    uint8_t cmd_addr_buf[4];
+    cmd_addr_buf[0] = CMD_SECTOR_ERASE_4K; // 0x20
+    cmd_addr_buf[1] = (uint8_t)((addr >> 16) & 0xFF);
+    cmd_addr_buf[2] = (uint8_t)((addr >> 8)  & 0xFF);
+    cmd_addr_buf[3] = (uint8_t)(addr         & 0xFF);
+
+    // Включаем Write Enable
+    RTOS_SPI_LockBus(RTOS_SPI_1);
     W25Q64_CS_Low();
-    SPI1_Transfer(CMD_WRITE_ENABLE);
+    RTOS_SPI_Transmit(RTOS_SPI_1, &cmd_en, 1);
     W25Q64_CS_High();
+    RTOS_SPI_UnlockBus(RTOS_SPI_1);
     
     for(volatile int i = 0; i < 50; i++);
 
+    // Основная транзакция стирания
+    RTOS_SPI_LockBus(RTOS_SPI_1);
     W25Q64_CS_Low();
-    SPI1_Transfer(CMD_SECTOR_ERASE_4K);
-
-    SPI1_Transfer((uint8_t)((addr >> 16) & 0xFF)); // Старший байт адреса
-    SPI1_Transfer((uint8_t)((addr >> 8) & 0xFF)); // Средний байт адреса
-    SPI1_Transfer((uint8_t)(addr & 0xFF)); // Младший байт адреса
+    RTOS_SPI_Transmit(RTOS_SPI_1, cmd_addr_buf, 4);
     W25Q64_CS_High();
+    RTOS_SPI_UnlockBus(RTOS_SPI_1);
 
     W25Q64_WaitReady();
 }

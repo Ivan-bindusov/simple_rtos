@@ -6,6 +6,8 @@
 
 extern Mutex_t spi1Mutex;
 
+uint16_t idFlash;
+
 void LIS3DSH_Hardware_Init(void) {
     RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
 
@@ -30,10 +32,16 @@ void Task1_HeapTest(void) {
 
     OS_Log_Init();
 
+    //OS_Log_Write(1, "Test1");
+
     OS_Log_DumpToUART();
 
-
     while(1) {
+        //idFlash = W25Q64_ReadID();
+        //UART2_SendHex16(idFlash);
+        //UART2_SendString("\r\n");
+        //OS_Log_DumpToUART();
+
         OS_Delay(1000);
     }
 }
@@ -79,6 +87,7 @@ int main(void) {
     GPIOC->BSRR |= GPIO_BSRR_BS_13;
 
     OS_Heap_Init();
+    RTOS_SPI_Init(1, 1, 3);
 
     Task_Create(0, 10, Task1_HeapTest);
     Task_Create(4, 255, Task4_Idle);
