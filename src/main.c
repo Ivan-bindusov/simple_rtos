@@ -30,13 +30,7 @@ void LIS3DSH_Hardware_Init(void) {
 void Task1_HeapTest(void) {
     OS_Delay(10);
 
-    W25Q64_Init();
-    UART2_Init(115200);
-    OS_Log_Init();
-
     //OS_Log_Write(1, "Test1");
-
-    OS_Log_DumpToUART();
 
     while(1) {
         idFlash = W25Q64_ReadID();
@@ -44,6 +38,19 @@ void Task1_HeapTest(void) {
         // UART2_SendString("\r\n");
 
         OS_Delay(1000);
+    }
+}
+
+void Task_SystemInit(void) {
+
+    RTOS_SPI_Init_Mutexes();
+
+    OS_Log_Init();
+    UART2_SendString("=== IvanOS: System initialization syccess\r\n");
+    OS_Log_DumpToUART();
+
+    while(1) {
+        OS_Delay(0xFFFFFFFF); 
     }
 }
 
@@ -61,6 +68,9 @@ void Led_Timer_Callback(void) {
 
 int main(void) {
     Clock_Init();
+    W25Q64_Init();
+    UART2_Init(115200);
+    OS_Heap_Init();
 
     for(volatile int i = 0; i < 500000; i++) { __NOP(); }
 
@@ -86,14 +96,13 @@ int main(void) {
 
     GPIOC->BSRR |= GPIO_BSRR_BS_13;
 
-    OS_Heap_Init();
-
+    Task_Create(0, 1, Task_SystemInit);
     Task_Create(0, 10, Task1_HeapTest);
     Task_Create(4, 255, Task4_Idle);
 
     SysTick_Init(100000000 / 1000);
 
-    OS_Start(Task1_HeapTest);
+    OS_Start(Task_SystemInit);
 
     while(1);
 }

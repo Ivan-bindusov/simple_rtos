@@ -8,15 +8,20 @@ static RTOS_SPI_Handle_t spiHandles[RTOS_SPI_MAX] = {
     {SPI3, {0}, 0}
 };
 
+void RTOS_SPI_Init_Mutexes(void) {
+    for (int i=0;i<RTOS_SPI_MAX;i++) {
+        if (spiHandles[i].isOpened) {
+            Mutex_Init(&spiHandles[i].busMutex);
+        }
+    }
+}
+
 void RTOS_SPI_Init(RTOS_SPI_Num_t spiNum, RTOS_SPI_Mode_t mode, RTOS_SPI_Baud_t baud) {
 	if (spiNum >= RTOS_SPI_MAX) return;
 
 	RTOS_SPI_Handle_t* hSpi = &spiHandles[spiNum];
 
-	// 1. Инициализируем наш ОСРВ-мьютекс для защиты этого модуля SPI
-	Mutex_Init(&hSpi->busMutex);
-
-	// 2. Аппаратно включаем тактирование шин и настраиваем GPIO в зависимости от модуля
+	// Аппаратно включаем тактирование шин и настраиваем GPIO в зависимости от модуля
     if (spiNum == RTOS_SPI_1) {
         // Включаем тактирование портов GPIOA и модуля SPI1
         RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
