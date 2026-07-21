@@ -68,3 +68,28 @@ void UART2_SendDec(uint32_t value) {
 		UART2_SendChar(buf[--i]);
 	}
 }
+
+void UART2_SendInt(int32_t value) {
+	char buf[11];
+	int i = 0;
+
+	if (value == 0) {
+		UART2_SendChar('0');
+		return;
+	}
+
+	// Если число отрицательное, выводим минус и делаем число положительным
+    if (value < 0) {
+        UART2_SendChar('-');
+        value = -value; 
+    }
+
+	while (value > 0) {
+		buf[i++] = '0' + (value % 10);
+		value /= 10;
+	}
+
+	while (i > 0) {
+		UART2_SendChar(buf[--i]);
+	}
+}

@@ -9,5 +9,6 @@ void UART2_SendChar(char ch);
 void UART2_SendString(const char* str);
 void UART2_SendHex16(uint16_t);
 void UART2_SendDec(uint32_t);
+void UART2_SendInt(int32_t);
 
 #endif

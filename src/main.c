@@ -85,7 +85,7 @@ void LIS3DH_Init(void) {
         return;
     }
     UART2_SendString("LIS3DH connection established.");
-    LIS3DH_WriteReg(0x20, 0x17); // 1 Гц, режим Normal/High-Res, все оси (X, Y, Z) включены
+    LIS3DH_WriteReg(0x20, 0x27); // Режим Normal/High-Res, все оси (X, Y, Z) включены
     LIS3DH_WriteReg(0x23, 0x08); // High-Resolution mode, Scale +-2g
     LIS3DH_WriteReg(0x22, 0x10); // Включить DRDY прерывание на INT1
 }
@@ -93,20 +93,10 @@ void LIS3DH_Init(void) {
 void Task1_HeapTest(void) {
     OS_Delay(10);
 
-    //OS_Log_Write(1, "Test1");
-
-    uint8_t lisID = LIS3DH_ReadReg(0x0F);
-
-    //UART2_SendString("\r\n");
-    //UART2_SendChar(lisID);
-
     while(1) {
-        //idFlash = W25Q64_ReadID();
-        //UART2_SendHex16(idFlash);
-        //UART2_SendString("\r\n");
-
         if (Semaphore_Take(&sensorDataReadySem, 0xFFFFFFFF)) {
-            LIS3DH_Data_t sample;
+           
+            LIS3DH_Data_t *sample = (LIS3DH_Data_t*)OS_Malloc(sizeof(LIS3DH_Data_t));
             RTOS_SPI_LockBus(RTOS_SPI_1);
             LIS_CS_LOW();
             (void)RTOS_SPI_TransferByte(RTOS_SPI_1, 0xE8);
@@ -118,22 +108,33 @@ void Task1_HeapTest(void) {
             uint8_t zl = RTOS_SPI_TransferByte(RTOS_SPI_1, 0x00);
             uint8_t zh = RTOS_SPI_TransferByte(RTOS_SPI_1, 0x00);
 
-            sample.ax = (int16_t)((xh << 8) | xl) >> 4;
-            sample.ax = (int16_t)((yh << 8) | yl) >> 4;
-            sample.ax = (int16_t)((zh << 8) | zl) >> 4;
-
-            UART2_SendDec(sample.ax);
-
             LIS_CS_HIGH();
             RTOS_SPI_UnlockBus(RTOS_SPI_1);
+
+            sample->ax = (int16_t)((xh << 8) | xl) >> 4;
+            sample->ay = (int16_t)((yh << 8) | yl) >> 4;
+            sample->az = (int16_t)((zh << 8) | zl) >> 4;
+
+            if(!Queue_Send(&sensorQueue, (uint32_t)sample)) {
+                OS_Free(sample);
+            }
         }
     }
 }
 
 void Task_DataProcessor(void) {
+    uint32_t sample;
+
     while(1) {
 
-        OS_Delay(1000);
+        if (Queue_Receive(&sensorQueue, &sample)) {
+            LIS3DH_Data_t* data = (LIS3DH_Data_t*)sample;
+
+            UART2_SendString("\r\n");
+            UART2_SendInt(data->ax);
+
+            OS_Free(data);
+        }
     }
 }
 
@@ -197,7 +198,7 @@ int main(void) {
 
     Task_Create(0, 1, Task_SystemInit);
     Task_Create(1, 10, Task1_HeapTest);
-    Task_Create(2, 11, Task_DataProcessor);
+    Task_Create(2, 20, Task_DataProcessor);
     Task_Create(4, 255, Task4_Idle);
 
     SysTick_Init(100000000 / 1000);
