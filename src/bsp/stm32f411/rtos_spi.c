@@ -83,6 +83,9 @@ void RTOS_SPI_Init(RTOS_SPI_Num_t spiNum, RTOS_SPI_Mode_t mode, RTOS_SPI_Baud_t 
 
 // Захват шины конкретной задачей ОСРВ (Защита от одновременного доступа)
 void RTOS_SPI_LockBus(RTOS_SPI_Num_t spiNum) {
+
+    if (!os_running) return; 
+
     if (spiNum < RTOS_SPI_MAX && spiHandles[spiNum].isOpened) {
         // Наш приоритетный мьютекс усыпит задачу, если шина сейчас занята другой задачей
         Mutex_Lock(&spiHandles[spiNum].busMutex, 0xFFFFFFFF); 
@@ -91,6 +94,9 @@ void RTOS_SPI_LockBus(RTOS_SPI_Num_t spiNum) {
 
 // Освобождение шины
 void RTOS_SPI_UnlockBus(RTOS_SPI_Num_t spiNum) {
+
+    if (!os_running) return; 
+
     if (spiNum < RTOS_SPI_MAX && spiHandles[spiNum].isOpened) {
         Mutex_Unlock(&spiHandles[spiNum].busMutex);
     }
@@ -99,7 +105,9 @@ void RTOS_SPI_UnlockBus(RTOS_SPI_Num_t spiNum) {
 // Потокобезопасный приемопередающий примитив (1 байт)
 uint8_t RTOS_SPI_TransferByte(RTOS_SPI_Num_t spiNum, uint8_t data) {
     // Текущая задача обязана владеть мьютексом шины
-    RTOS_ASSERT(spiHandles[spiNum].busMutex.ownerTask == currentTask);
+    if (os_running) {
+        RTOS_ASSERT(spiHandles[spiNum].busMutex.ownerTask == currentTask);
+    }
 
     SPI_TypeDef* SPIx = spiHandles[spiNum].regs;
     

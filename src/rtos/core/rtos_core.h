@@ -5,6 +5,8 @@
 #include <stddef.h>
 #include "stm32f411xe.h"
 
+extern volatile uint8_t os_running;
+
 #define SYS_TICK_LOAD 100000000U
 #define MAX_TASKS   5
 #define STACK_SIZE  256

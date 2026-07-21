@@ -7,7 +7,7 @@ TCB_t TCBs[MAX_TASKS];
 volatile uint32_t currentTask = 0;
 uint32_t __attribute__((aligned(8))) TaskStacks[MAX_TASKS][STACK_SIZE];
 
-extern volatile uint8_t os_running;
+volatile uint8_t os_running;
 
 void OS_StackOverflow_Handler(uint32_t brokenTaskIndex) {
     __asm volatile ("cpsid i");
@@ -97,6 +97,7 @@ void OS_Delay(uint32_t ms) {
 }
 
 void OS_Start(void (*firstTaskFunc)(void)) {
+    os_running = 1;
     __asm volatile (
         "cpsid i \n"
         "ldr r0, =TCBs \n"            
