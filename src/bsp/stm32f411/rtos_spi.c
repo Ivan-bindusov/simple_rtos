@@ -1,5 +1,6 @@
 #include "rtos_spi.h"
 #include <stddef.h>
+#include "../rtos/core/rtos_core.h"
 
 // Создаем массив управляющих структур под все 3 аппаратных модуля SPI в STM32F411
 static RTOS_SPI_Handle_t spiHandles[RTOS_SPI_MAX] = {
@@ -97,6 +98,9 @@ void RTOS_SPI_UnlockBus(RTOS_SPI_Num_t spiNum) {
 
 // Потокобезопасный приемопередающий примитив (1 байт)
 uint8_t RTOS_SPI_TransferByte(RTOS_SPI_Num_t spiNum, uint8_t data) {
+    // Текущая задача обязана владеть мьютексом шины
+    RTOS_ASSERT(spiHandles[spiNum].busMutex.ownerTask == currentTask);
+
     SPI_TypeDef* SPIx = spiHandles[spiNum].regs;
     
     // Ждем флаг TXE (Transmit buffer empty) — регистр готов принять байт в буфер отправки

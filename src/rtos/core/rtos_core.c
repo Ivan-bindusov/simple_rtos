@@ -4,8 +4,10 @@
 
 //выделение памяти под структуры ОС
 TCB_t TCBs[MAX_TASKS];
-uint32_t currentTask = 0;
+volatile uint32_t currentTask = 0;
 uint32_t __attribute__((aligned(8))) TaskStacks[MAX_TASKS][STACK_SIZE];
+
+extern volatile uint8_t os_running;
 
 void OS_StackOverflow_Handler(uint32_t brokenTaskIndex) {
     __asm volatile ("cpsid i");
@@ -111,4 +113,22 @@ void OS_Start(void (*firstTaskFunc)(void)) {
         : [task_addr] "r" (firstTaskFunc) // Передаем адрес функции первой задачи в ассемблерный код
         : "r0" //список регистров, которые будут очищены
     );
+}
+
+void rtos_assert_failed(const uint8_t* file, uint32_t line) {
+    __asm volatile("cpsid i");
+
+    UART2_SendString("\r\n !!! RTOS ASSERT FAILED !!! \r\n");
+    UART2_SendString("File: ");
+    UART2_SendString((const char*)file);
+    UART2_SendString("\r\nString: ");
+    UART2_SendDec(line);
+    UART2_SendString("\r\n");
+
+    //OS_Log_Write((uint8_t)currentTask, (const char*)file);
+
+    while(1) {
+        GPIOC->ODR ^= GPIO_ODR_OD13;
+        for(volatile int i = 0; i < 800000; i++); // Быстрое аварийное мерцание
+    }
 }

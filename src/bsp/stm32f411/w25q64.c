@@ -17,6 +17,27 @@ void W25Q64_Init(void) {
     W25Q64_CS_High();
 }
 
+// Функция проверки связи: читает ID производителя флешки (должно вернуться 0xEF16)
+uint16_t W25Q64_ReadID(void) {
+    uint8_t cmd_buf[4] = { CMD_MANUFACTURER_ID, 0x00, 0x00, 0x00 }; // Команда 0x90 + 3 байта фиктивного адреса
+    uint8_t id_buf[2] = {0};
+    uint16_t id = 0;
+    
+    RTOS_SPI_LockBus(RTOS_SPI_1);
+    W25Q64_CS_Low();
+
+    // Пакетно выстреливаем команду и адрес за один вызов!
+    RTOS_SPI_Transmit(RTOS_SPI_1, cmd_buf, 4);
+    // Пакетно забираем 2 байта паспорта чипа
+    RTOS_SPI_Receive(RTOS_SPI_1, id_buf, 2);
+
+    W25Q64_CS_High();
+    RTOS_SPI_UnlockBus(RTOS_SPI_1);
+
+    id = (id_buf[0] << 8) | id_buf[1];
+    return id;
+}
+
 uint8_t W25Q64_ReadStatus(void) {
     uint8_t status = 0;
     uint8_t cmd = CMD_READ_STATUS_REG1;
@@ -42,33 +63,10 @@ void W25Q64_WaitReady(void) {
     }
 }
 
-// Функция проверки связи: читает ID производителя флешки (должно вернуться 0xEF16)
-uint16_t W25Q64_ReadID(void) {
-    uint8_t cmd_buf[4] = { CMD_MANUFACTURER_ID, 0x00, 0x00, 0x00 }; // Команда 0x90 + 3 байта фиктивного адреса
-    uint8_t id_buf[2] = {0};
-    uint16_t id = 0;
-    
-    RTOS_SPI_LockBus(RTOS_SPI_1);
-    W25Q64_CS_Low();
-
-    // Пакетно выстреливаем команду и адрес за один вызов!
-    RTOS_SPI_Transmit(RTOS_SPI_1, cmd_buf, 4);
-    // Пакетно забираем 2 байта паспорта чипа
-    RTOS_SPI_Receive(RTOS_SPI_1, id_buf, 2);
-
-    W25Q64_CS_High();
-    RTOS_SPI_UnlockBus(RTOS_SPI_1);
-
-    id = (id_buf[0] << 8) | id_buf[1];
-    return id;
-}
-
 void W25Q64_Read(uint32_t addr, uint8_t* buf, uint32_t len) {
     if (len == 0 || buf == NULL) return;
 
     W25Q64_WaitReady();
-
-    W25Q64_CS_Low();
     
     // Отправляем массив байт адреса
     uint8_t cmd_addr_buf[4];
@@ -79,6 +77,8 @@ void W25Q64_Read(uint32_t addr, uint8_t* buf, uint32_t len) {
 
     // Блокируем шину SPI1 для нашей текущей задачи логгера
     RTOS_SPI_LockBus(RTOS_SPI_1);
+
+    W25Q64_CS_Low();
 
     RTOS_SPI_Transmit(RTOS_SPI_1, cmd_addr_buf, 4);
 

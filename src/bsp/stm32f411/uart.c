@@ -49,3 +49,22 @@ void UART2_SendHex16(uint16_t value) {
 	UART2_SendChar(hex_to_char((value >> 4) & 0x0F));
 	UART2_SendChar(hex_to_char(value & 0x0F));
 }
+
+void UART2_SendDec(uint32_t value) {
+	char buf[10];
+	int i = 0;
+
+	if (value == 0) {
+		UART2_SendChar('0');
+		return;
+	}
+
+	while (value > 0) {
+		buf[i++] = '0' + (value % 10);
+		value /= 10;
+	}
+
+	while (i > 0) {
+		UART2_SendChar(buf[--i]);
+	}
+}

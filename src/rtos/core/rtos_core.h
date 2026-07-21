@@ -20,7 +20,7 @@ typedef struct {
 
 //глобальные переменные ядра
 extern TCB_t TCBs[MAX_TASKS];    // Массив всех задач
-extern uint32_t currentTask;  // Индекс активной задачи
+extern volatile uint32_t currentTask;  // Индекс активной задачи
 extern uint32_t TaskStacks[MAX_TASKS][STACK_SIZE];
 
 void Clock_Init(void);
@@ -30,5 +30,13 @@ uint32_t* os_scheduler(void);
 void OS_Delay(uint32_t ms);
 void SysTick_Init(uint32_t load);
 void OS_StackOverflow_Handler(uint32_t brokenTaskIndex);
+void rtos_assert_failed(const uint8_t* file, uint32_t line);
+
+#define RTOS_ASSERT(condition) \
+    do { \
+        if (!(condition)) { \
+            rtos_assert_failed((const uint8_t*)__FILE__, __LINE__); \
+        } \
+    } while(0)
 
 #endif // RTOS_CORE_H

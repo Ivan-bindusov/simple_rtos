@@ -1,20 +1,30 @@
 #include "rtos/rtos.h"
 #include "bsp/stm32f411/w25q64.h"
 
-#define LIS_CS_LOW() (GPIOA->BSRR |= GPIO_BSRR_BR5);
-#define LIS_CS_HIGH() (GPIOA->BSRR |= GPIO_BSRR_BS5);
-
-extern Mutex_t spi1Mutex;
+#define LIS_CS_LOW() (GPIOA->BSRR |= GPIO_BSRR_BR1);
+#define LIS_CS_HIGH() (GPIOA->BSRR |= GPIO_BSRR_BS1);
 
 uint16_t idFlash;
+Semaphore_t sensorDataReadySem;
+Queue_t sensorQueue;
 
-void LIS3DSH_Hardware_Init(void) {
+typedef struct {
+    int16_t ax;
+    int16_t ay;
+    int16_t az;
+} LIS3DH_Data_t;
+
+void LIS3DH_Hardware_Init(void) {
     RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
 
-    // Настройка пина PA3 как Output для CS
-    GPIOA->MODER &= ~(GPIO_MODER_MODE5);
-    GPIOA->MODER |= (1 << GPIO_MODER_MODE5_Pos);
+    // Настройка пина PA0 как Output для CS
+    GPIOA->MODER &= ~(GPIO_MODER_MODE1);
+    GPIOA->MODER |= (1 << GPIO_MODER_MODE1_Pos);
     LIS_CS_HIGH(); // Иначально чип отключен
+
+    GPIOA->MODER &= ~GPIO_MODER_MODER0; // Mode: Input
+    GPIOA->PUPDR &= ~GPIO_PUPDR_PUPDR0; 
+    GPIOA->PUPDR |= (2 << GPIO_PUPDR_PUPD0_Pos);
 
     // Настройка прерывания от датчика
     RCC->APB2ENR |= RCC_APB2ENR_SYSCFGEN;
@@ -23,8 +33,61 @@ void LIS3DSH_Hardware_Init(void) {
     EXTI->IMR |= EXTI_IMR_IM0; // Разрешаем прерывание EXTI0
     EXTI->RTSR |= EXTI_RTSR_TR0; // Срабатывание по переднему фронту
 
+    RTOS_SPI_LockBus(RTOS_SPI_1);
+    LIS_CS_LOW();
+    (void)RTOS_SPI_TransferByte(RTOS_SPI_1, 0xE8);
+    for(int i = 0; i < 6; i++) {
+        RTOS_SPI_TransferByte(RTOS_SPI_1, 0x00); // Вычитываем 6 байт в пустоту
+    }
+    LIS_CS_HIGH();
+    RTOS_SPI_UnlockBus(RTOS_SPI_1);
+
+    EXTI->PR = EXTI_PR_PR0; 
+
     NVIC_SetPriority(EXTI0_IRQn, 6);
     NVIC_EnableIRQ(EXTI0_IRQn);
+}
+
+void LIS3DH_WriteReg(uint8_t reg, uint8_t value) {
+    RTOS_SPI_LockBus(RTOS_SPI_1);
+    LIS_CS_LOW();
+    uint8_t reg_val[2];
+    reg_val[0] = reg & 0x7F;
+    reg_val[1] = value;
+    RTOS_SPI_Transmit(RTOS_SPI_1, reg_val, 2);
+    LIS_CS_HIGH();
+    RTOS_SPI_UnlockBus(RTOS_SPI_1);
+}
+
+uint8_t LIS3DH_ReadReg(uint8_t reg) {
+    RTOS_SPI_LockBus(RTOS_SPI_1);
+    uint8_t val;
+    LIS_CS_LOW();
+    (void)RTOS_SPI_TransferByte(RTOS_SPI_1, reg | 0x80);
+    val = RTOS_SPI_TransferByte(RTOS_SPI_1, 0x00);
+    LIS_CS_HIGH();
+    RTOS_SPI_UnlockBus(RTOS_SPI_1);
+    return val;
+}
+
+void EXTI0_IRQHandler(void) {
+    if (EXTI->PR & EXTI_PR_PR0) {
+        EXTI->PR = EXTI_PR_PR0;
+
+        Semaphore_Give(&sensorDataReadySem);
+    }
+}
+
+void LIS3DH_Init(void) {
+    if (LIS3DH_ReadReg(0x0F) != 0x33) {
+        UART2_SendString("LIS3DH connection failed!");
+        OS_Log_Write(1, "LIS3DH connection failed!");
+        return;
+    }
+    UART2_SendString("LIS3DH connection established.");
+    LIS3DH_WriteReg(0x20, 0x17); // 1 Гц, режим Normal/High-Res, все оси (X, Y, Z) включены
+    LIS3DH_WriteReg(0x23, 0x08); // High-Resolution mode, Scale +-2g
+    LIS3DH_WriteReg(0x22, 0x10); // Включить DRDY прерывание на INT1
 }
 
 void Task1_HeapTest(void) {
@@ -32,10 +95,43 @@ void Task1_HeapTest(void) {
 
     //OS_Log_Write(1, "Test1");
 
+    uint8_t lisID = LIS3DH_ReadReg(0x0F);
+
+    //UART2_SendString("\r\n");
+    //UART2_SendChar(lisID);
+
     while(1) {
-        idFlash = W25Q64_ReadID();
-        // UART2_SendHex16(idFlash);
-        // UART2_SendString("\r\n");
+        //idFlash = W25Q64_ReadID();
+        //UART2_SendHex16(idFlash);
+        //UART2_SendString("\r\n");
+
+        if (Semaphore_Take(&sensorDataReadySem, 0xFFFFFFFF)) {
+            LIS3DH_Data_t sample;
+            RTOS_SPI_LockBus(RTOS_SPI_1);
+            LIS_CS_LOW();
+            (void)RTOS_SPI_TransferByte(RTOS_SPI_1, 0xE8);
+
+            uint8_t xl = RTOS_SPI_TransferByte(RTOS_SPI_1, 0x00);
+            uint8_t xh = RTOS_SPI_TransferByte(RTOS_SPI_1, 0x00);
+            uint8_t yl = RTOS_SPI_TransferByte(RTOS_SPI_1, 0x00);
+            uint8_t yh = RTOS_SPI_TransferByte(RTOS_SPI_1, 0x00);
+            uint8_t zl = RTOS_SPI_TransferByte(RTOS_SPI_1, 0x00);
+            uint8_t zh = RTOS_SPI_TransferByte(RTOS_SPI_1, 0x00);
+
+            sample.ax = (int16_t)((xh << 8) | xl) >> 4;
+            sample.ax = (int16_t)((yh << 8) | yl) >> 4;
+            sample.ax = (int16_t)((zh << 8) | zl) >> 4;
+
+            UART2_SendDec(sample.ax);
+
+            LIS_CS_HIGH();
+            RTOS_SPI_UnlockBus(RTOS_SPI_1);
+        }
+    }
+}
+
+void Task_DataProcessor(void) {
+    while(1) {
 
         OS_Delay(1000);
     }
@@ -44,10 +140,15 @@ void Task1_HeapTest(void) {
 void Task_SystemInit(void) {
 
     RTOS_SPI_Init_Mutexes();
-
     OS_Log_Init();
-    UART2_SendString("=== IvanOS: System initialization syccess\r\n");
+    //UART2_SendString("=== IvanOS: System initialization syccess\r\n");
     OS_Log_DumpToUART();
+
+    LIS3DH_Hardware_Init();
+    LIS3DH_Init();
+
+    Semaphore_Init(&sensorDataReadySem, 0, 1);
+    Queue_Init(&sensorQueue);
 
     while(1) {
         OS_Delay(0xFFFFFFFF); 
@@ -74,8 +175,6 @@ int main(void) {
 
     for(volatile int i = 0; i < 500000; i++) { __NOP(); }
 
-    //RTOS_SPI_Init(1, 1, 3);
-
     // Разрешаем отладку во время сна WFI
     DBGMCU->CR |= DBGMCU_CR_DBG_SLEEP | DBGMCU_CR_DBG_STOP | DBGMCU_CR_DBG_STANDBY;
     // 1. АППАРАТНОЕ ВКЛЮЧЕНИЕ FPU (Разрешаем полный доступ к сопроцессорам CP10 и CP11)
@@ -97,7 +196,8 @@ int main(void) {
     GPIOC->BSRR |= GPIO_BSRR_BS_13;
 
     Task_Create(0, 1, Task_SystemInit);
-    Task_Create(0, 10, Task1_HeapTest);
+    Task_Create(1, 10, Task1_HeapTest);
+    Task_Create(2, 11, Task_DataProcessor);
     Task_Create(4, 255, Task4_Idle);
 
     SysTick_Init(100000000 / 1000);
