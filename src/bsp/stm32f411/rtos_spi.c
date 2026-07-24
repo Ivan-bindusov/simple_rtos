@@ -1,9 +1,10 @@
 #include "rtos_spi.h"
 #include <stddef.h>
 #include "../rtos/core/rtos_core.h"
+#include "rtos_dma.h"
 
 // Создаем массив управляющих структур под все 3 аппаратных модуля SPI в STM32F411
-static RTOS_SPI_Handle_t spiHandles[RTOS_SPI_MAX] = {
+RTOS_SPI_Handle_t spiHandles[RTOS_SPI_MAX] = {
     {SPI1, {0}, 0},
     {SPI2, {0}, 0},
     {SPI3, {0}, 0}
@@ -129,7 +130,38 @@ void RTOS_SPI_Transmit(RTOS_SPI_Num_t spiNum, const uint8_t* pTxData, uint32_t s
 
 // Пакетный прием массива данных
 void RTOS_SPI_Receive(RTOS_SPI_Num_t spiNum, uint8_t* pRxData, uint32_t size) {
+    if (size == 0 || pRxData == NULL) return;
+    
     for (uint32_t i = 0; i < size; i++) {
         pRxData[i] = RTOS_SPI_TransferByte(spiNum, 0x00);
+    }
+}
+
+void RTOS_SPI_Receive_DMA(RTOS_SPI_Num_t spiNum, uint8_t* pRxData, uint32_t size) {
+    if (size == 0 || pRxData == NULL) return;
+
+    SPI_TypeDef* SPIx = spiHandles[spiNum].regs;
+
+    if (spiNum == RTOS_SPI_1) {
+        if (size < 4 || ((uint32_t)pRxData & 0x03) != 0) {
+            for (uint32_t i = 0; i < size; i++) {
+                pRxData[i] = RTOS_SPI_TransferByte(spiNum, 0x00);
+            }
+            return;
+        }
+        while (SPIx->SR & SPI_SR_BSY);
+        volatile uint32_t dummy_clear = SPIx->DR;
+        (void)dummy_clear;
+
+        SPIx->CR1 |= SPI_CR1_RXONLY; // Включаем режим "только прием"
+
+        RTOS_SPI1_Receive_DMA(pRxData, size);
+
+        SPIx->CR1 &= ~SPI_CR1_RXONLY; // Возвращаем SPI1 в стандартный режим работы
+
+        dummy_clear = SPIx->DR;
+        (void)dummy_clear;
+    } else {
+        RTOS_SPI_Receive(spiNum, pRxData, size);
     }
 }

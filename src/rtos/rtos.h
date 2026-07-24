@@ -14,5 +14,6 @@
 #include "timers/rtos_timer.h"
 #include "bsp/stm32f411/uart.h"
 #include "bsp/stm32f411/rtos_spi.h"
+#include "bsp/stm32f411/rtos_dma.h"
 
 #endif

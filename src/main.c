@@ -141,6 +141,7 @@ void Task_DataProcessor(void) {
 void Task_SystemInit(void) {
 
     RTOS_SPI_Init_Mutexes();
+    RTOS_DMA_Init();
     OS_Log_Init();
     //UART2_SendString("=== IvanOS: System initialization syccess\r\n");
     OS_Log_DumpToUART();
@@ -162,10 +163,6 @@ void Task4_Idle(void) {
         //__WFI(); // Сон процессора до следующего системного тика (экономия энергии)
         __NOP();
     }
-}
-
-void Led_Timer_Callback(void) {
-    GPIOC->ODR ^= GPIO_ODR_ODR_13;
 }
 
 int main(void) {

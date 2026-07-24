@@ -83,7 +83,7 @@ void W25Q64_Read(uint32_t addr, uint8_t* buf, uint32_t len) {
     RTOS_SPI_Transmit(RTOS_SPI_1, cmd_addr_buf, 4);
 
     // Пакетно выкачиваем данные из флешки напрямую в буфер пользователя
-    RTOS_SPI_Receive(RTOS_SPI_1, buf, len);
+    RTOS_SPI_Receive_DMA(RTOS_SPI_1, buf, len);
     
     W25Q64_CS_High(); // Отпускаем флешку
 

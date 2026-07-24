@@ -47,6 +47,9 @@ void RTOS_SPI_UnlockBus(RTOS_SPI_Num_t spiNum);
 uint8_t RTOS_SPI_TransferByte(RTOS_SPI_Num_t spiNum, uint8_t data);
 void RTOS_SPI_Transmit(RTOS_SPI_Num_t spiNum, const uint8_t* pTxData, uint32_t size);
 void RTOS_SPI_Receive(RTOS_SPI_Num_t spiNum, uint8_t* pRxData, uint32_t size);
+void RTOS_SPI_Receive_DMA(RTOS_SPI_Num_t spiNum, uint8_t* pRxData, uint32_t size);
 void RTOS_SPI_Init_Mutexes(void);
+
+extern RTOS_SPI_Handle_t spiHandles[RTOS_SPI_MAX];
 
 #endif
