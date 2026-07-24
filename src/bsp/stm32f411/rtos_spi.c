@@ -140,8 +140,6 @@ void RTOS_SPI_Receive(RTOS_SPI_Num_t spiNum, uint8_t* pRxData, uint32_t size) {
 void RTOS_SPI_Receive_DMA(RTOS_SPI_Num_t spiNum, uint8_t* pRxData, uint32_t size) {
     if (size == 0 || pRxData == NULL) return;
 
-    SPI_TypeDef* SPIx = spiHandles[spiNum].regs;
-
     if (spiNum == RTOS_SPI_1) {
         if (size < 4 || ((uint32_t)pRxData & 0x03) != 0) {
             for (uint32_t i = 0; i < size; i++) {
@@ -149,18 +147,9 @@ void RTOS_SPI_Receive_DMA(RTOS_SPI_Num_t spiNum, uint8_t* pRxData, uint32_t size
             }
             return;
         }
-        while (SPIx->SR & SPI_SR_BSY);
-        volatile uint32_t dummy_clear = SPIx->DR;
-        (void)dummy_clear;
-
-        SPIx->CR1 |= SPI_CR1_RXONLY; // Включаем режим "только прием"
 
         RTOS_SPI1_Receive_DMA(pRxData, size);
 
-        SPIx->CR1 &= ~SPI_CR1_RXONLY; // Возвращаем SPI1 в стандартный режим работы
-
-        dummy_clear = SPIx->DR;
-        (void)dummy_clear;
     } else {
         RTOS_SPI_Receive(spiNum, pRxData, size);
     }

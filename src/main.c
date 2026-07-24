@@ -142,15 +142,15 @@ void Task_SystemInit(void) {
 
     RTOS_SPI_Init_Mutexes();
     RTOS_DMA_Init();
+
+    Semaphore_Init(&sensorDataReadySem, 0, 1);
+    Queue_Init(&sensorQueue);
+
     OS_Log_Init();
-    //UART2_SendString("=== IvanOS: System initialization syccess\r\n");
     OS_Log_DumpToUART();
 
     LIS3DH_Hardware_Init();
     LIS3DH_Init();
-
-    Semaphore_Init(&sensorDataReadySem, 0, 1);
-    Queue_Init(&sensorQueue);
 
     while(1) {
         OS_Delay(0xFFFFFFFF); 
